@@ -66,21 +66,23 @@ Monitoring is the process of keeping an eye on these metrics over time to unders
 - Install and configure kubectl as mentioned [here]("https://kubernetes.io/docs/tasks/tools/").
 
 
+-------create in eu-north-1 for me (suzit)
+
 ```bash
 eksctl create cluster --name=observability \
-                      --region=us-east-1 \
-                      --zones=us-east-1a,us-east-1b \
+                      --region=eu-north-1 \
+                      --zones=eu-north-1a,eu-north-1b \
                       --without-nodegroup
 ```
 ```bash
 eksctl utils associate-iam-oidc-provider \
-    --region us-east-1 \
+    --region eu-north-1 \
     --cluster observability \
     --approve
 ```
 ```bash
 eksctl create nodegroup --cluster=observability \
-                        --region=us-east-1 \
+                        --region=eu-north-1 \
                         --name=observability-ng-private \
                         --node-type=t3.medium \
                         --nodes-min=2 \
@@ -127,7 +129,7 @@ kubectl port-forward service/prometheus-operated -n monitoring 9090:9090
 
 **NOTE:** If you are using an EC2 Instance or Cloud VM, you need to pass `--address 0.0.0.0` to the above command. Then you can access the UI on <instance-ip:port>
 
-- **Grafana UI**: password is `prom-operator`
+- **Grafana UI**: password is `prom-operator` , my: WejqiT5eM2RcwVraxuUmBvqyDC3KaiENSquFzg25
 ```bash
 kubectl port-forward service/monitoring-grafana -n monitoring 8080:80
 ```
