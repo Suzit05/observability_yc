@@ -1,0 +1,23 @@
+alertmanager:
+  config:
+    global:
+      resolve_timeout: 5m
+      smtp_smarthost: "smtp.gmail.com:587"
+      smtp_from: "yoru@gmail.com"
+      smtp_auth_username: "your@gmail.com"
+      smtp_auth_password: "your_app_paswword"
+      smtp_auth_identity: "your@gmail.com"
+      smtp_require_tls: true
+      smtp_hello: "localhost"
+
+    route:
+      receiver: "email-alert"
+      group_wait: 10s
+      group_interval: 30s
+      repeat_interval: 1m
+
+    receivers:
+      - name: "email-alert"
+        email_configs:
+          - to: "your@gmail.com"
+            send_resolved: true

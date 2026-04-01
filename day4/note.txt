@@ -1,0 +1,368 @@
+Nice — this is exactly where you want to be 🎯
+Now let’s turn everything you did into a **clean, repeatable runbook** so you can recreate it anytime from scratch.
+
+---
+
+# 🧠 🏗️ Final Architecture (Keep this in mind)
+
+```
+EKS Cluster
+   ↓
+kube-prometheus-stack (Helm)
+   ↓
+Prometheus Operator
+   ↓
+ServiceMonitor
+   ↓
+Node.js App (/metrics)
+   ↓
+Grafana (visualization)
+```
+
+---
+
+# 🚀 FULL END-TO-END STEPS (FROM ZERO)
+
+You can follow this anytime after deleting cluster.
+
+---
+
+# 🧩 STEP 1: Create EKS Cluster
+
+Using eksctl
+
+```bash
+eksctl create cluster --name=observability \
+  --region=eu-north-1 \
+  --zones=eu-north-1a,eu-north-1b \
+  --without-nodegroup
+```
+
+---
+
+## 🔐 Add OIDC
+
+```bash
+eksctl utils associate-iam-oidc-provider \
+  --region eu-north-1 \
+  --cluster observability \
+  --approve
+```
+
+---
+
+## 🖥️ Create Nodegroup
+
+```bash
+eksctl create nodegroup --cluster=observability \
+  --region=eu-north-1 \
+  --name=observability-ng-private \
+  --node-type=t3.medium \
+  --nodes-min=2 \
+  --nodes-max=3 \
+  --node-volume-size=20 \
+  --managed \
+  --asg-access \
+  --external-dns-access \
+  --full-ecr-access \
+  --appmesh-access \
+  --alb-ingress-access \
+  --node-private-networking
+```
+
+---
+
+# 🧩 STEP 2: Configure kubectl
+
+```bash
+aws eks update-kubeconfig --name observability --region eu-north-1
+```
+
+Verify:
+
+```bash
+kubectl get nodes
+```
+
+---
+
+# 🧩 STEP 3: Install Prometheus Stack
+
+Using kube-prometheus-stack
+
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+```
+
+---
+
+## Create namespace
+
+```bash
+kubectl create ns monitoring
+```
+
+---
+
+## Install Helm chart
+
+```bash
+helm install monitoring prometheus-community/kube-prometheus-stack \
+  -n monitoring \
+  -f day2/custom_kube_prometheus_stack.yml
+```
+
+---
+
+## ✅ Verify
+
+```bash
+kubectl get pods -n monitoring
+```
+
+---
+
+# 🧩 STEP 4: Build & Push Docker Image
+
+Go to your app:
+
+```bash
+cd day4/apps/service-a
+```
+
+---
+
+## Build
+
+```bash
+docker build -t <your-username>/service-a:latest .
+```
+
+---
+
+## Push (via Docker Hub)
+
+```bash
+docker push <your-username>/service-a:latest
+```
+
+---
+
+# 🧩 STEP 5: Deploy App to Kubernetes
+
+Go to:
+
+```bash
+cd ../../k8s
+```
+
+---
+
+## 📄 deployment.yaml
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-a
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: service-a
+  template:
+    metadata:
+      labels:
+        app: service-a
+    spec:
+      containers:
+        - name: service-a
+          image: <your-username>/service-a:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+```
+
+---
+
+## 📄 service.yaml
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-a
+  labels:
+    app: service-a
+spec:
+  selector:
+    app: service-a
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+```
+
+---
+
+## Apply
+
+```bash
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
+```
+
+---
+
+# 🧩 STEP 6: Connect App to Prometheus
+
+## 📄 servicemonitor.yaml
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: service-a-monitor
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: service-a
+  namespaceSelector:
+    matchNames:
+      - default
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+```
+
+---
+
+## Apply
+
+```bash
+kubectl apply -f servicemonitor.yaml
+```
+
+---
+
+# 🧪 STEP 7: Verify Everything
+
+---
+
+## Pods
+
+```bash
+kubectl get pods
+```
+
+👉 Should be `Running`
+
+---
+
+## Prometheus UI
+
+```bash
+kubectl port-forward service/prometheus-operated -n monitoring 9090:9090
+```
+
+Open:
+
+```
+http://localhost:9090 or see the url from the console
+```
+
+---
+
+## Check Targets
+
+👉 Go to:
+
+```
+/targets
+```
+
+✅ You should see:
+
+```
+service-a-monitor → UP
+```
+
+---
+
+## Run Query
+
+```promql
+http_requests_total
+```
+
+---
+
+# 📊 STEP 8: Grafana
+
+```bash
+kubectl port-forward service/monitoring-grafana -n monitoring 8080:80
+```
+
+Login:
+
+* user: admin
+* password: prom-operator
+
+---
+
+# 🧹 CLEANUP (Important)
+
+If you want to delete everything:
+
+```bash
+eksctl delete cluster --name observability --region eu-north-1
+```
+
+---
+
+# 🧠 KEY THINGS TO REMEMBER
+
+### 🔑 1. Always push Docker image first
+
+Otherwise:
+
+```
+ImagePullBackOff ❌
+```
+
+---
+
+### 🔑 2. ServiceMonitor is the bridge
+
+Without it:
+
+```
+Prometheus won’t see your app ❌
+```
+
+---
+
+### 🔑 3. Label must match
+
+```yaml
+labels:
+  release: monitoring
+```
+#for alert --upgrade helm-----------------
+
+helm upgrade monitoring prometheus-community/kube-prometheus-stack \
+-n monitoring \
+-f day2/custom_kube_prometheus_stack.yml \
+-f day4/alertmanager/alertmanager-values.yml
+
+#port forward prometheus
+kubectl port-forward service/prometheus-operated -n monitoring 9090:9090
+
+#now delete one of the pod to check---kubectl get pods
+
+#completed day 4 - but do the alerting part once again
